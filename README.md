@@ -4,7 +4,23 @@ An analog clock whose hands show the time until the next downtown 1 train arrive
 
 ## How It Works
 
-The software polls the MTA's public GTFS-Realtime feed every 30 seconds, parses the protobuf response, and extracts arrival predictions for the southbound 1 train at 125th St (GTFS stop `116S`). The number of minutes until the next arrival is then mapped to a position on the clock face, driven by a stepper motor.
+The software polls the MTA's public GTFS-Realtime feed every 15 seconds, parses the protobuf response, and extracts arrival predictions for the southbound 1 train at 125th St (GTFS stop `116S`). The minutes until each of the next **three** arrivals are mapped to positions on the clock face and driven by three independent stepper motors — one per hand.
+
+**Countdown mapping.** 12 o'clock represents a train arriving *now*. A hand for a train `m` minutes away sits `m` minutes *before* 12 — i.e. counterclockwise from the top, exactly like reading a normal clock backwards from the hour:
+
+| Minutes to train | Hand position |
+| --- | --- |
+| 0 (arriving) | 12 o'clock |
+| 1 | the "59" mark (just before 12) |
+| 15 | 9 o'clock |
+| 30 | 6 o'clock |
+| 55 (capped) | 1 o'clock |
+
+As a train approaches, its hand sweeps clockwise up toward 12. Trains beyond `CLOCK_MAX_MINUTES` (55) are pegged at the 1 o'clock cap so a far-out train never wraps past 12 and collides with the "arriving now" position.
+
+- **Hand 1 (bottom)** — soonest train
+- **Hand 2 (middle)** — second train
+- **Hand 3 (top)** — third train
 
 This is a Python translation of the [SubwayTimeService](../SubwayTimeService) Go project, stripped of AWS infrastructure (Lambda, DynamoDB, API Gateway) and adapted to run locally on the Pi.
 
@@ -12,13 +28,22 @@ This is a Python translation of the [SubwayTimeService](../SubwayTimeService) Go
 
 ```
 analog_clock/
-  config.py             # Station, route, feed URL, polling interval
+  config.py             # Station, route, feed URL, polling, GPIO pins, geometry
   mta_feed.py           # Fetches + parses GTFS-Realtime protobuf from MTA
   subway_times.py       # Caching layer, computes minutes-to-arrival
-  clock_controller.py   # Stub for stepper motor / hall sensor control
+  clock_controller.py   # Maps minutes -> hand angle, drives the 3 steppers
+  stepper.py            # StepperHand: half-stepping, homing, position tracking
   main.py               # Entry point — poll loop
   requirements.txt      # Python dependencies
+  # Hardware bring-up / diagnostics (run on the Pi):
+  test_motor.py         # Spin one motor a full revolution each way
+  test_hall.py          # Live readout of one hall sensor
+  test_hall_live.py     # Live readout of all three hall sensors at once
 ```
+
+When `MOTORS_ENABLED = False` (the default, for laptop development), `clock_controller`
+just logs what each hand *would* do, so the whole app runs anywhere without GPIO.
+Set it to `True` on the Pi to drive the motors.
 
 ## Setup (Local / Development)
 
@@ -72,9 +97,18 @@ uv run main.py
 
 You should see log output like:
 ```
-2026-04-05 12:00:00 [__main__] INFO: Analog subway clock starting
-2026-04-05 12:00:01 [mta_feed] INFO: 1 train at 116S arriving Sat Apr 05 12:04:30 EDT (4.5 min)
-2026-04-05 12:00:01 [__main__] INFO: Next 1 train downtown in 4.5 min | upcoming: ['4.5', '12.3', '20.1']
+2026-06-29 23:38:30 [__main__] INFO: Analog subway clock starting
+2026-06-29 23:38:30 [mta_feed] INFO: 1 train at 125th St arriving Mon Jun 29 23:48:25 EDT (9.8 min)
+2026-06-29 23:38:30 [__main__] INFO: Next 3 trains (min): ['9.8', '21.0', '34.5']
+```
+
+With `MOTORS_ENABLED = True`, you'll also see the hands home on startup and then
+each move to its train's position:
+```
+[clock_controller] INFO: Homing 3 hands sequentially...
+[stepper] INFO: [hand1] home found (magnet zone 152 steps, centered, offset +0)
+...
+[clock_controller] INFO: [hand1] 9.8 min -> -58.8°
 ```
 
 ### 4. Run on Boot (systemd)
@@ -111,57 +145,93 @@ sudo systemctl start subwayclock
 journalctl -u subwayclock -f
 ```
 
-## Next Steps: Hardware Integration
+## Hardware
 
-### Stepper Motors
+Three **28BYJ-48** stepper motors (one per hand), each driven by a **ULN2003**
+board, plus three hall-effect sensors for homing. Everything runs at 5V/3.3V
+directly off the Pi — no external driver chips.
 
-You'll need a stepper motor to drive the clock hand(s). Common choices for small clocks:
+### GPIO wiring (BCM numbering)
 
-- **28BYJ-48** with ULN2003 driver board — cheap, widely available, fine for a clock hand. ~$3 on Amazon. 5V, works directly with Pi GPIO.
-- **NEMA 17** with A4988 or DRV8825 driver — more torque/precision, but overkill for a single clock hand.
+Each ULN2003 board: `+` → 5V, `−` → GND, IN1–IN4 → four GPIOs.
+Each hall sensor: VCC → **3.3V** (not 5V — keeps the signal pin within the
+GPIO's safe range), GND → GND, OUT → one GPIO.
 
-The 28BYJ-48 is the typical choice for clock projects. It has 2048 steps per revolution (in half-step mode), which gives you ~0.18 degrees per step — more than enough precision.
+| Hand | Position | IN1 | IN2 | IN3 | IN4 | Hall OUT |
+| --- | --- | --- | --- | --- | --- | --- |
+| 1 | bottom | GPIO6 | GPIO13 | GPIO19 | GPIO26 | GPIO4 |
+| 2 | middle | GPIO12 | GPIO16 | GPIO20 | GPIO21 | GPIO5 |
+| 3 | top | GPIO17 | GPIO27 | GPIO22 | GPIO23 | GPIO24 |
 
-**Wiring (28BYJ-48 + ULN2003):**
-- ULN2003 IN1–IN4 connect to 4 GPIO pins on the Pi
-- ULN2003 power: 5V and GND from the Pi's 5V pin
+All pins are defined in `config.py` (the `HANDS` list) — change them there if you
+rewire. Use the breadboard power rails to fan out 5V / 3.3V / GND, since the Pi
+header doesn't have enough power pins for three boards plus three sensors. **All
+grounds must be common.**
 
-**Python library:** Use `RPi.GPIO` (pre-installed on Pi OS) or the `gpiozero` library. Add to `requirements.txt` when on the Pi:
+> **Power note.** All three boards share the Pi's 5V pin. To stay within budget,
+> the firmware moves and homes **one motor at a time** (~250 mA peak). Don't
+> drive all three simultaneously on this power setup, or the Pi can brown out.
+> For simultaneous motion, feed the boards from an external 5V supply (grounds
+> still tied to the Pi).
+
+### Homing
+
+Each hand carries a magnet; a fixed sensor in the top plate detects it at the
+12 o'clock position. On startup `StepperHand.home()`:
+
+1. Sweeps until it finds the magnet's **trigger zone** (an arc, not a point).
+2. Measures the zone width and parks at its **center** — the most repeatable
+   reference — then applies an optional per-hand `home_offset_steps` fudge to
+   land exactly on 12. Budget is two full revolutions, so a wide zone or a
+   worst-case start position can never run out.
+
+`HALL_ACTIVE_LEVEL` in `config.py` is the level the sensors read with a magnet
+present. These modules are **active-HIGH** (read 1 with a magnet, idle 0).
+
+### Geometry / calibration
+
+- `STEPS_PER_REV = 8192` — **measured**, not assumed. On this hardware, 4096
+  half-steps produced only 180° of output rotation, so a full revolution is
+  8192. Every minutes→angle conversion depends on this; homing is sensor-based
+  and unaffected. (~22.8 steps per degree.)
+- `home_offset_steps` (per hand in `HANDS`) nudges that hand clockwise after
+  homing to correct a magnet that isn't exactly at 12. The top hand uses ~140;
+  the others 0. Tune by eye.
+- `MINUTES_PER_REV = 60`, `CLOCK_MAX_MINUTES = 55` — the countdown mapping (see
+  *How It Works*).
+
+### Bring-up procedure (on the Pi)
+
+Stop the service first so it isn't holding the GPIO: `sudo systemctl stop subwayclock`.
+
+```bash
+.venv/bin/python test_motor.py 1      # spin each motor: 1, 2, 3
+.venv/bin/python test_hall_live.py    # wave a magnet at each sensor, watch it flip
 ```
-RPi.GPIO>=0.7.0
+
+Then set `MOTORS_ENABLED = True` in `config.py`, run `.venv/bin/python main.py`
+to watch it home and track trains, and finally `sudo systemctl start subwayclock`.
+
+### GPIO dependencies on the Pi
+
+`gpiozero` + `lgpio` come from apt, **not pip** (the lgpio wheel needs `swig` to
+compile and fails under `uv`):
+
+```bash
+sudo apt install -y python3-gpiozero python3-lgpio
 ```
 
-### Hall Effect Sensor (Home Position Detection)
+The venv must be able to see them, so create it with system site-packages:
 
-A hall effect sensor detects a small magnet attached to the clock hand, so the software knows the hand's absolute position on startup (the "home" position).
+```bash
+uv venv --system-site-packages
+```
 
-- **A3144** (digital, latching) or **SS49E** (analog) — either works. The A3144 is simplest: it outputs HIGH/LOW based on magnet presence.
-- Attach a small magnet to the clock hand shaft or hand itself.
-- Mount the sensor at the 12 o'clock (0 minute) position.
-
-**Wiring (A3144):**
-- VCC to 3.3V
-- GND to GND
-- Signal to a GPIO pin (with a 10k pull-up resistor)
-
-**Homing procedure on startup:**
-1. Slowly step the motor forward
-2. Read the hall sensor each step
-3. When the sensor triggers, you've found 0 — record this as the reference position
-4. Now you can move to any angle by counting steps from home
-
-### Implementation Plan
-
-1. Get the software running on the Pi and confirming train times (current state)
-2. Wire up the stepper motor + driver, test basic stepping with a simple script
-3. Wire up the hall sensor, implement the homing routine
-4. Fill in `clock_controller.py` with real GPIO code to map minutes to motor position
-5. Build/mount the clock face and hand
-6. Set up systemd for auto-start on boot
+(For an existing venv: set `include-system-site-packages = true` in
+`.venv/pyvenv.cfg`.)
 
 ### Useful Resources
 
 - `gpiozero` docs: https://gpiozero.readthedocs.io/
-- 28BYJ-48 Pi tutorial: search "28BYJ-48 raspberry pi python"
 - MTA GTFS-Realtime reference: https://api.mta.info/
 - Raspberry Pi GPIO pinout: https://pinout.xyz/

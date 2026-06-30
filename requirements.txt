@@ -1,2 +1,8 @@
 gtfs-realtime-bindings>=1.0.0
 requests>=2.28.0
+# GPIO (Pi only): gpiozero + lgpio. Do NOT pip-install these — the lgpio wheel
+# needs swig to compile and fails under uv. Use the apt builds instead:
+#     sudo apt install -y python3-gpiozero python3-lgpio
+# and create the venv with system site-packages so it can see them:
+#     uv venv --system-site-packages
+# (Existing venv: set include-system-site-packages = true in .venv/pyvenv.cfg.)

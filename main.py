@@ -10,7 +10,7 @@ import time
 
 from config import POLL_INTERVAL_SECONDS, LOG_LEVEL
 from subway_times import get_next_train_minutes
-from clock_controller import update_clock_hands
+from clock_controller import update_clock_hands, shutdown as shutdown_clock
 
 logging.basicConfig(
     level=getattr(logging, LOG_LEVEL),
@@ -50,6 +50,7 @@ def main():
 
         time.sleep(POLL_INTERVAL_SECONDS)
 
+    shutdown_clock()
     logger.info("Goodbye")
 
 
