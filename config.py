@@ -8,11 +8,13 @@ STATION_ID = "116S"
 STATION_NAME = "125th St"
 ROUTE_ID = "1"
 
-# How often to poll the MTA feed (seconds)
-POLL_INTERVAL_SECONDS = 15
+# How often to recompute and move the hands (seconds)
+POLL_INTERVAL_SECONDS = 10
 
-# Cache duration — don't re-fetch if data is newer than this (seconds)
-CACHE_TTL_SECONDS = 60
+# Cache duration — don't re-fetch from the MTA feed if data is newer than this
+# (seconds). Between fetches, hand positions still update from cached arrival
+# timestamps, so they keep counting down accurately.
+CACHE_TTL_SECONDS = 30
 
 # Number of clock hands (show the N soonest trains)
 NUM_HANDS = 3
