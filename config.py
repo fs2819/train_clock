@@ -37,6 +37,11 @@ MINUTES_PER_REV = 60
 # 11 o'clock.
 CLOCK_MAX_MINUTES = 55
 
+# Where a hand parks when there is no train for it (downtown service skipping or
+# suspended at this stop, or simply no prediction). 90° = 3 o'clock. All three
+# hands at 3 o'clock = no downtown 1 trains stopping at 125th St.
+NO_SERVICE_ANGLE = 90.0
+
 # 28BYJ-48 geometry: half-step mode, gear-reduced output shaft.
 # Measured empirically on this hardware: 4096 steps produced only 180° of
 # travel, so a full output revolution is 8192 half-steps. (The gearbox ratio

@@ -23,6 +23,7 @@ from config import (
     HOMING_MAX_STEPS,
     MINUTES_PER_REV,
     MOTORS_ENABLED,
+    NO_SERVICE_ANGLE,
     STEP_DELAY_SECONDS,
     STEPS_PER_REV,
 )
@@ -93,8 +94,9 @@ def update_clock_hands(train_minutes: list[float | None]) -> None:
 
     Args:
         train_minutes: List of NUM_HANDS values — minutes until each of the
-            soonest trains. None entries mean no train data for that hand
-            (the hand parks at home / 0).
+            soonest trains. None entries mean no train for that hand (the hand
+            parks at the no-service position; all three there = no downtown
+            trains stopping at this station).
     """
     if not MOTORS_ENABLED:
         _log_only(train_minutes)
@@ -103,8 +105,12 @@ def update_clock_hands(train_minutes: list[float | None]) -> None:
     hands = _get_hands()
     for hand, minutes in zip(hands, train_minutes):
         if minutes is None:
-            logger.info("[%s] no train data — parking at home", hand.name)
-            hand.move_to_angle(0.0)
+            logger.info(
+                "[%s] no train — parking at no-service (%.0f°)",
+                hand.name,
+                NO_SERVICE_ANGLE,
+            )
+            hand.move_to_angle(NO_SERVICE_ANGLE)
             continue
 
         angle = _angle_for_minutes(minutes)
@@ -124,7 +130,11 @@ def _log_only(train_minutes: list[float | None]) -> None:
     for i, minutes in enumerate(train_minutes):
         hand = i + 1
         if minutes is None:
-            logger.warning("Hand %d: no train data — idle", hand)
+            logger.info(
+                "Hand %d: no train — no-service position (%.0f°)",
+                hand,
+                NO_SERVICE_ANGLE,
+            )
             continue
         angle = _angle_for_minutes(minutes)
         if minutes > CLOCK_MAX_MINUTES:

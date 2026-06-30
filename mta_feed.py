@@ -14,6 +14,10 @@ from config import FEED_URL, STATION_ID, STATION_NAME, ROUTE_ID
 
 logger = logging.getLogger(__name__)
 
+# GTFS-Realtime StopTimeUpdate.ScheduleRelationship value for a stop the trip
+# will not serve (== 1). Resolved from the protobuf enum rather than hardcoded.
+_SKIPPED = gtfs_realtime_pb2.TripUpdate.StopTimeUpdate.ScheduleRelationship.SKIPPED
+
 
 @dataclass
 class PredictedArrival:
@@ -62,6 +66,17 @@ def parse_feed(feed: gtfs_realtime_pb2.FeedMessage) -> StationTimes:
         for stop_time_update in trip_update.stop_time_update:
             stop_id = stop_time_update.stop_id
             if not stop_id.startswith(STATION_ID):
+                continue
+
+            # Skip stops the trip explicitly won't serve (e.g. downtown service
+            # routed express past 125th). SKIPPED == 1 in GTFS-Realtime's
+            # StopTimeUpdate.ScheduleRelationship enum.
+            if stop_time_update.schedule_relationship == _SKIPPED:
+                logger.info(
+                    "%s train SKIPPING %s — not counted",
+                    ROUTE_ID,
+                    STATION_NAME,
+                )
                 continue
 
             arrival_time = stop_time_update.arrival.time
