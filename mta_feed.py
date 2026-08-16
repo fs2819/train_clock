@@ -21,6 +21,10 @@ _SKIPPED = gtfs_realtime_pb2.TripUpdate.StopTimeUpdate.ScheduleRelationship.SKIP
 
 @dataclass
 class PredictedArrival:
+    # GTFS trip ID — stable across feed refreshes, so a clock hand can keep
+    # tracking the same physical train from poll to poll. Falls back to the
+    # arrival timestamp on the rare entity that has no trip ID.
+    trip_id: str
     unix_time: int
     human_time: str
     minutes_to_arrival: float
@@ -63,6 +67,8 @@ def parse_feed(feed: gtfs_realtime_pb2.FeedMessage) -> StationTimes:
         if route_id != ROUTE_ID:
             continue
 
+        trip_id = trip_update.trip.trip_id
+
         for stop_time_update in trip_update.stop_time_update:
             stop_id = stop_time_update.stop_id
             if not stop_id.startswith(STATION_ID):
@@ -92,6 +98,7 @@ def parse_feed(feed: gtfs_realtime_pb2.FeedMessage) -> StationTimes:
             )
             arrivals.append(
                 PredictedArrival(
+                    trip_id=trip_id or f"ts{arrival_time}",
                     unix_time=arrival_time,
                     human_time=human_time,
                     minutes_to_arrival=round(minutes, 1),

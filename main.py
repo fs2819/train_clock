@@ -8,8 +8,8 @@ import signal
 import sys
 import time
 
-from config import POLL_INTERVAL_SECONDS, LOG_LEVEL
-from subway_times import get_next_train_minutes
+from config import NUM_HANDS, POLL_INTERVAL_SECONDS, LOG_LEVEL
+from subway_times import get_upcoming_trains
 from clock_controller import update_clock_hands, shutdown as shutdown_clock
 
 logging.basicConfig(
@@ -37,13 +37,14 @@ def main():
 
     while running:
         try:
-            trains = get_next_train_minutes()
-            display = [
-                f"{m:.1f}" if m is not None else "—" for m in trains
-            ]
-            logger.info("Next 3 trains (min): %s", display)
+            # Pass the whole queue, not just NUM_HANDS of it: the controller
+            # assigns hands to individual trains and a hand whose train has
+            # just arrived picks up one from further down the list.
+            upcoming = get_upcoming_trains()
+            display = [f"{t.minutes:.1f}" for t in upcoming[:NUM_HANDS]]
+            logger.info("Next %d trains (min): %s", NUM_HANDS, display)
 
-            update_clock_hands(trains)
+            update_clock_hands(upcoming)
 
         except Exception:
             logger.exception("Error in main loop")

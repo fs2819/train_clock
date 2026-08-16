@@ -69,11 +69,15 @@ HANDS = [
         "hall_pin": 5,
         "home_offset_steps": 0,
     },
-    {  # Hand 3 — third train — TOP hand. Magnet zone widened by a 2nd magnet,
-       # so its center sits ~a few° toward 11 o'clock; nudge clockwise to 12.
+    {  # Hand 3 — third train — TOP hand.
         "in_pins": (17, 27, 22, 23),
         "hall_pin": 24,
-        "home_offset_steps": 140,  # ~6.2° at 8192 steps/rev (~22.8 steps/°)
+        # Re-tuned 2026-08-16 for the new magnets (measured zone: ~490 steps).
+        # Tuning history: with no offset it parked one minute-mark PAST 12
+        # (toward 1), so -137 (1/60th of a rev); that overshot toward 11, so
+        # we gave back a third -> -91. The old +140 belonged to the previous
+        # two-magnet arrangement and no longer applies.
+        "home_offset_steps": -91,
     },
 ]
 

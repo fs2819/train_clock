@@ -4,7 +4,7 @@ An analog clock whose hands show the time until the next downtown 1 train arrive
 
 ## How It Works
 
-The software polls the MTA's public GTFS-Realtime feed every 15 seconds, parses the protobuf response, and extracts arrival predictions for the southbound 1 train at 125th St (GTFS stop `116S`). The minutes until each of the next **three** arrivals are mapped to positions on the clock face and driven by three independent stepper motors — one per hand.
+The software polls the MTA's public GTFS-Realtime feed every 15 seconds, parses the protobuf response, and extracts arrival predictions for the southbound 1 train at 125th St (GTFS stop `116S`). The minutes until arrival are mapped to positions on the clock face and driven by three independent stepper motors — one per hand, each following its own train (see *Hand assignment* below).
 
 **Countdown mapping.** 12 o'clock represents a train arriving *now*. A hand for a train `m` minutes away sits `m` minutes *before* 12 — i.e. counterclockwise from the top, exactly like reading a normal clock backwards from the hour:
 
@@ -18,9 +18,24 @@ The software polls the MTA's public GTFS-Realtime feed every 15 seconds, parses 
 
 As a train approaches, its hand sweeps clockwise up toward 12. Trains beyond `CLOCK_MAX_MINUTES` (55) are pegged at the 1 o'clock cap so a far-out train never wraps past 12 and collides with the "arriving now" position.
 
-- **Hand 1 (bottom)** — soonest train
-- **Hand 2 (middle)** — second train
-- **Hand 3 (top)** — third train
+**Each hand follows one train.** Hands are *not* pinned to "soonest / second /
+third". A hand is handed a specific train (identified by its GTFS trip ID) and
+tracks that same train all the way in, sweeping clockwise toward 12. When its
+train arrives, that hand takes the soonest train no other hand is showing —
+which, since the other two hands are holding the nearer trains, is the
+furthest-out train on the dial. So the hand that just reached 12 recycles to
+the back of the queue and the other two keep sweeping undisturbed, instead of
+all three shuffling up a place on every arrival.
+
+**Hands only ever turn clockwise.** The countdown mapping already sweeps a hand
+clockwise as its train approaches, and when a hand switches trains it travels
+clockwise to the new position too — the long way round the dial rather than
+back-tracking. Over a day every hand rotates in one direction only, like a real
+clock.
+
+At startup all three hands home to 12 o'clock, then take the three soonest
+trains by the shortest path (the clockwise-only rule applies to swapping
+trains, not to first placement).
 
 This is a Python translation of the [SubwayTimeService](../SubwayTimeService) Go project, stripped of AWS infrastructure (Lambda, DynamoDB, API Gateway) and adapted to run locally on the Pi.
 

@@ -167,23 +167,31 @@ class StepperHand:
         angle_deg %= 360.0
         return round(angle_deg / 360.0 * self.steps_per_rev) % self.steps_per_rev
 
-    def move_to_position(self, target_position):
-        """Move to an absolute half-step position by the shorter direction."""
+    def move_to_position(self, target_position, forward_only=False):
+        """Move to an absolute half-step position.
+
+        By default takes the shorter of the two directions. With
+        ``forward_only`` the hand always travels clockwise, even when that
+        means going most of the way round the dial — used when a hand is
+        handed a different train, so the hands only ever advance clockwise.
+        """
         target_position %= self.steps_per_rev
         delta = (target_position - self._position) % self.steps_per_rev
-        # Going the "long way" round? Go backwards instead.
-        if delta > self.steps_per_rev // 2:
+        # delta is now in [0, steps_per_rev): the clockwise distance.
+        # Going the "long way" round? Go backwards instead — unless the caller
+        # has asked for clockwise-only motion.
+        if not forward_only and delta > self.steps_per_rev // 2:
             delta -= self.steps_per_rev
         self.step_many(delta)
 
-    def move_to_angle(self, angle_deg):
+    def move_to_angle(self, angle_deg, forward_only=False):
         """Move the hand to a face angle (0° = home = 12 o'clock)."""
         if not self._homed:
             logger.warning(
                 "[%s] move requested before homing; position may be wrong",
                 self.name,
             )
-        self.move_to_position(self.steps_for_angle(angle_deg))
+        self.move_to_position(self.steps_for_angle(angle_deg), forward_only=forward_only)
 
     def close(self):
         self.release()
