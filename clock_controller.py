@@ -99,7 +99,7 @@ def _rehome(hand) -> None:
 
     Called when a hand's train has arrived and it is about to travel the long
     way round to its next train. ``home()`` sweeps forward, so this keeps the
-    clockwise-only rule; the cost is up to one extra lap (~10 s) that the hand
+    clockwise-only rule; the cost is up to one extra lap (~12 s) that the hand
     was largely going to make anyway.
 
     A failure here is logged, not raised: the hand keeps its old (drifted)

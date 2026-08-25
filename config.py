@@ -96,7 +96,7 @@ STEP_DELAY_SECONDS = 0.0015
 # its next train. Half-step slip is invisible on any single move but accumulates
 # over hours, so a hand homed only at startup is well out of place by morning.
 # The hand is idle and about to travel the long way round anyway, so the extra
-# sweep costs ~10 s and nothing visually. Set False to go back to homing only at
+# sweep costs ~12 s and nothing visually. Set False to go back to homing only at
 # startup (e.g. when timing something and you want no surprise laps).
 REHOME_AFTER_ARRIVAL = True
 
