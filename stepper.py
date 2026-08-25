@@ -121,6 +121,11 @@ class StepperHand:
         logger.info("[%s] homing...", self.name)
         budget = 2 * self.steps_per_rev
 
+        # Remember where the step count *claimed* we were, so a re-home can
+        # report how wrong that claim turned out to be.
+        start_position = self._position
+        was_homed = self._homed
+
         # 1. Exit the zone if we start inside it.
         steps = 0
         while self._hall_triggered and steps < budget:
@@ -150,15 +155,40 @@ class StepperHand:
             self.step_many(self.home_offset_steps)
 
         self.release()
+
+        # 5. Compare distance actually travelled against the distance the step
+        # count predicted. On a re-home the gap is accumulated open-loop error
+        # since the last home — the thing STEP_DELAY_SECONDS is tuned against.
+        # Positive = the hand was lagging (lost steps); negative = ran ahead.
+        drift = None
+        if was_homed:
+            travelled = steps + zone - (zone // 2) + self.home_offset_steps
+            expected = (0 - start_position) % self.steps_per_rev
+            drift = (travelled - expected) % self.steps_per_rev
+            if drift > self.steps_per_rev // 2:
+                drift -= self.steps_per_rev
+
         self._position = 0
         self._seq_index = 0
         self._homed = True
-        logger.info(
-            "[%s] home found (magnet zone %d steps, centered, offset %+d)",
-            self.name,
-            zone,
-            self.home_offset_steps,
-        )
+
+        if drift is None:
+            logger.info(
+                "[%s] home found (magnet zone %d steps, centered, offset %+d)",
+                self.name,
+                zone,
+                self.home_offset_steps,
+            )
+        else:
+            logger.info(
+                "[%s] home found (magnet zone %d steps, centered, offset %+d) "
+                "— drift since last home: %+d steps (%+.2f°)",
+                self.name,
+                zone,
+                self.home_offset_steps,
+                drift,
+                drift / self.steps_per_rev * 360.0,
+            )
 
     # -- high level --------------------------------------------------------
 

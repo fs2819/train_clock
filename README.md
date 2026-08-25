@@ -4,7 +4,7 @@ An analog clock whose hands show the time until the next downtown 1 train arrive
 
 ## How It Works
 
-The software polls the MTA's public GTFS-Realtime feed every 15 seconds, parses the protobuf response, and extracts arrival predictions for the southbound 1 train at 125th St (GTFS stop `116S`). The minutes until arrival are mapped to positions on the clock face and driven by three independent stepper motors — one per hand, each following its own train (see *Hand assignment* below).
+The software recomputes hand positions every 10 seconds (`POLL_INTERVAL_SECONDS`), re-fetching the MTA's public GTFS-Realtime feed only when the cache has aged past 30 seconds (`CACHE_TTL_SECONDS`). Arrival times are absolute, so between fetches the hands keep counting down accurately from cached data. The fetch parses the protobuf response and extracts arrival predictions for the southbound 1 train at 125th St (GTFS stop `116S`). The minutes until arrival are mapped to positions on the clock face and driven by three independent stepper motors — one per hand, each following its own train (see *Hand assignment* below).
 
 **Countdown mapping.** 12 o'clock represents a train arriving *now*. A hand for a train `m` minutes away sits `m` minutes *before* 12 — i.e. counterclockwise from the top, exactly like reading a normal clock backwards from the hour:
 
@@ -32,6 +32,17 @@ clockwise as its train approaches, and when a hand switches trains it travels
 clockwise to the new position too — the long way round the dial rather than
 back-tracking. Over a day every hand rotates in one direction only, like a real
 clock.
+
+**Each hand re-homes when its train arrives.** Half-step slip is invisible on
+any single move but accumulates over hours, so a clock homed only at startup
+has hands well out of place by morning. Instead, the moment a hand's train
+leaves the feed — and *before* it swings round to its next train — that one
+hand re-homes on its magnet and starts the new sweep from a known 12 o'clock.
+The other two hands are untouched and keep tracking their own trains. Homing
+sweeps forward, so this respects the clockwise-only rule; the cost is up to one
+extra lap (~12 s) that the hand was largely going to make anyway. Set
+`REHOME_AFTER_ARRIVAL = False` in `config.py` to go back to homing only at
+startup.
 
 At startup all three hands home to 12 o'clock, then take the three soonest
 trains by the shortest path (the clockwise-only rule applies to swapping
@@ -192,13 +203,18 @@ grounds must be common.**
 ### Homing
 
 Each hand carries a magnet; a fixed sensor in the top plate detects it at the
-12 o'clock position. On startup `StepperHand.home()`:
+12 o'clock position. On startup — and again for each hand as its train arrives,
+unless `REHOME_AFTER_ARRIVAL` is off — `StepperHand.home()`:
 
 1. Sweeps until it finds the magnet's **trigger zone** (an arc, not a point).
 2. Measures the zone width and parks at its **center** — the most repeatable
    reference — then applies an optional per-hand `home_offset_steps` fudge to
    land exactly on 12. Budget is two full revolutions, so a wide zone or a
    worst-case start position can never run out.
+
+A re-home that fails mid-run (bad sensor read, magnet knocked loose) is logged
+and skipped rather than raised: that hand carries on from its last known,
+drifted position and the rest of the clock keeps running.
 
 `HALL_ACTIVE_LEVEL` in `config.py` is the level the sensors read with a magnet
 present. These modules are **active-HIGH** (read 1 with a magnet, idle 0).
@@ -210,8 +226,19 @@ present. These modules are **active-HIGH** (read 1 with a magnet, idle 0).
   8192. Every minutes→angle conversion depends on this; homing is sensor-based
   and unaffected. (~22.8 steps per degree.)
 - `home_offset_steps` (per hand in `HANDS`) nudges that hand clockwise after
-  homing to correct a magnet that isn't exactly at 12. The top hand uses ~140;
-  the others 0. Tune by eye.
+  homing to correct a magnet that isn't exactly at 12. The top hand uses -91
+  (re-tuned for the current magnets); the others 0. Tune by eye.
+- `STEP_DELAY_SECONDS = 0.0015` — the pause between issued half-steps, i.e.
+  the speed limit. 1.5 ms works out to ~667 half-steps/s, so a full revolution
+  takes `8192 x 0.0015` ≈ **12.3 s** (~5 rpm at the hand). Raised from 1.2 ms
+  after the first overnight run drifted badly. This is the single
+  most important number for drift: the 28BYJ-48 is driven **open-loop**, with
+  no encoder and no acceleration ramp, so if the rotor can't keep up with the
+  commanded field it slips poles silently — the code still believes it moved,
+  and the hand is permanently offset until the next home. Slower = more torque
+  margin. If drift is still building between re-homes, raise it further (up to
+  ~2.0 ms) and accept longer sweeps; if a motor audibly buzzes without turning,
+  it is already too fast.
 - `MINUTES_PER_REV = 60`, `CLOCK_MAX_MINUTES = 55` — the countdown mapping (see
   *How It Works*).
 

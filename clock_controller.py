@@ -22,6 +22,12 @@ that means crossing most of the dial. Combined with the countdown mapping (which
 already sweeps a hand clockwise as its train approaches), each hand therefore
 only ever advances clockwise, like a real clock.
 
+Drift: half-step slip is invisible on any one move but accumulates over hours,
+so a hand homed only at startup is noticeably off by morning. Each hand
+therefore RE-HOMES at the one moment it is free — after its train has arrived,
+before it swings round to its next one — correcting that hand without
+disturbing the two still tracking their own trains. See REHOME_AFTER_ARRIVAL.
+
 Movement is sequential (one motor at a time). With all three boards powered
 from the Pi's 5V pin this keeps peak current to a single motor (~250 mA),
 avoiding brownouts. If you later add an external 5V supply you can parallelise.
@@ -38,6 +44,7 @@ from config import (
     MOTORS_ENABLED,
     NO_SERVICE_ANGLE,
     NUM_HANDS,
+    REHOME_AFTER_ARRIVAL,
     STEP_DELAY_SECONDS,
     STEPS_PER_REV,
 )
@@ -85,6 +92,27 @@ def _get_hands():
 
     _hands = hands
     return _hands
+
+
+def _rehome(hand) -> None:
+    """Re-find 12 o'clock for one hand, mid-run.
+
+    Called when a hand's train has arrived and it is about to travel the long
+    way round to its next train. ``home()`` sweeps forward, so this keeps the
+    clockwise-only rule; the cost is up to one extra lap (~10 s) that the hand
+    was largely going to make anyway.
+
+    A failure here is logged, not raised: the hand keeps its old (drifted)
+    position and the clock carries on, rather than the whole poll dying on one
+    bad sensor read.
+    """
+    logger.info("[%s] train arrived — re-homing before its next train", hand.name)
+    try:
+        hand.home()
+    except Exception:
+        logger.exception(
+            "[%s] re-home failed — carrying on from last known position", hand.name
+        )
 
 
 def _assign_trains(upcoming: list[UpcomingTrain]) -> list[UpcomingTrain | None]:
@@ -166,6 +194,12 @@ def update_clock_hands(upcoming: list[UpcomingTrain]) -> None:
         # so does normal minute-by-minute tracking of the same train.
         switched = previous[i] is not None and _hand_trip_ids[i] != previous[i]
 
+        # Its train has left the dial and this hand is idle: the one moment in
+        # normal operation when it is safe to re-home and shed accumulated
+        # drift. Leaves the hand at a known 0, so the move below is exact.
+        if switched and REHOME_AFTER_ARRIVAL:
+            _rehome(hand)
+
         if train is None:
             logger.info(
                 "[%s] no train — parking at no-service (%.0f°)",
@@ -204,6 +238,9 @@ def _log_only(upcoming: list[UpcomingTrain]) -> None:
     for i, train in enumerate(assigned):
         hand = i + 1
         switched = previous[i] is not None and _hand_trip_ids[i] != previous[i]
+
+        if switched and REHOME_AFTER_ARRIVAL:
+            logger.info("Hand %d: train arrived — would re-home before its next train", hand)
 
         if train is None:
             logger.info(

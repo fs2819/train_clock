@@ -81,9 +81,24 @@ HANDS = [
     },
 ]
 
-# Seconds between issued half-steps. The 28BYJ-48 stalls if driven too fast;
-# ~1.2 ms is a safe, reasonably quick speed. Increase if a motor buzzes/stalls.
-STEP_DELAY_SECONDS = 0.0012
+# Seconds between issued half-steps — the speed limit. 1.5 ms is ~667
+# half-steps/s, so a full revolution takes ~12.3 s.
+#
+# This is the main drift knob. The 28BYJ-48 runs open-loop with no ramp, so if
+# the rotor can't keep up with the commanded field it slips poles silently and
+# the hand is offset until its next home. Raised from 1.2 ms on 2026-08-25
+# after the first overnight run left all three hands well out of place; slower
+# = more torque margin. Room to go to ~2.0 ms if drift persists. If a motor
+# buzzes without turning, it's still too fast.
+STEP_DELAY_SECONDS = 0.0015
+
+# Re-home a hand each time its train arrives, before it swings round to pick up
+# its next train. Half-step slip is invisible on any single move but accumulates
+# over hours, so a hand homed only at startup is well out of place by morning.
+# The hand is idle and about to travel the long way round anyway, so the extra
+# sweep costs ~10 s and nothing visually. Set False to go back to homing only at
+# startup (e.g. when timing something and you want no surprise laps).
+REHOME_AFTER_ARRIVAL = True
 
 # Homing: hall sensor reads this logic level when the magnet is in front of it.
 # Verified on the bench: these modules read HIGH (1) when a magnet is present
