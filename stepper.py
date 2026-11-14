@@ -16,6 +16,11 @@ import time
 
 logger = logging.getLogger(__name__)
 
+# Homing treats the magnet zone as ended only after this many consecutive
+# untriggered steps (~0.9°), so a brief sensor dropout inside the zone doesn't
+# cut the measured width short. Real zones are 150-500 steps wide.
+ZONE_GAP_STEPS = 20
+
 # Half-step sequence for the 28BYJ-48. Eight states, energising one or two of
 # the four coils at a time. Driving the sequence forward turns the shaft one
 # way; reversed, the other. Half-stepping gives smoother motion and better
@@ -143,12 +148,20 @@ class StepperHand:
                 f"{budget} steps — check wiring, magnet, and HALL_ACTIVE_LEVEL"
             )
 
-        # 3. Measure the zone width, then back up to its center.
-        zone = 0
-        while self._hall_triggered and zone < self.steps_per_rev:
+        # 3. Measure the zone width, then back up to its center. The sensor can
+        # drop out for a few steps near the zone's edge (seen on hand2: a 1-step
+        # "zone" inside a ~280-step one), so the zone only ends after
+        # ZONE_GAP_STEPS consecutive untriggered steps.
+        zone = 0  # steps from the leading edge to the last triggered step
+        gap = 0  # untriggered steps since then
+        while gap < ZONE_GAP_STEPS and zone + gap < self.steps_per_rev:
             self._step(1)
-            zone += 1
-        self.step_many(-(zone // 2))  # land on the middle of the magnet
+            if self._hall_triggered:
+                zone += gap + 1
+                gap = 0
+            else:
+                gap += 1
+        self.step_many(-(gap + zone // 2))  # land on the middle of the magnet
 
         # 4. Apply the mechanical home offset so 0 lands on true 12 o'clock.
         if self.home_offset_steps:
