@@ -79,19 +79,18 @@ HANDS = [
     {  # Hand 2 — second train — MIDDLE hand
         "in_pins": (12, 16, 20, 21),
         "hall_pin": 5,
-        # 2026-09-18 reassembly: parked at the 59 mark, one minute-mark
-        # (1/60 rev = 137 steps) counterclockwise of 12.
-        "home_offset_steps": 137,
+        # Tuned by eye 2026-11-14 once homing centred on the full ~250-step
+        # zone (+137 parked right of 12, the old 1-step-zone homing left of it).
+        "home_offset_steps": 75,
     },
     {  # Hand 3 — third train — TOP hand.
         "in_pins": (17, 27, 22, 23),
         "hall_pin": 24,
-        # Reset to 0 on 2026-09-18: the +592/+660 values were tuned while a
-        # loose IN1 wire (pin 11) left this motor running on three coils at
-        # ~half speed, so they no longer apply. Re-tune by eye from here.
-        # Earlier history: -91 for the ~490-step zone (2026-08-16); +140 for
-        # the original two-magnet arrangement.
-        "home_offset_steps": 0,
+        # Tuned by eye 2026-11-14 (0 parked slightly right of 12). History:
+        # 0 after the 2026-09-18 loose-IN1 fix (+592/+660 were tuned with the
+        # motor on three coils); -91 for the ~490-step zone (2026-08-16); +140
+        # for the original two-magnet arrangement.
+        "home_offset_steps": -30,
     },
 ]
 
