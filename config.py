@@ -37,10 +37,22 @@ MINUTES_PER_REV = 60
 # 11 o'clock.
 CLOCK_MAX_MINUTES = 55
 
-# Where a hand parks when there is no train for it (downtown service skipping or
-# suspended at this stop, or simply no prediction). 90° = 3 o'clock. All three
-# hands at 3 o'clock = no downtown 1 trains stopping at 125th St.
-NO_SERVICE_ANGLE = 90.0
+# Status positions (degrees clockwise from 12). All three hands together at one
+# of these is a status signal, not trains:
+#   2 o'clock — feed is fine but no downtown 1 trains are stopping at 125th St.
+#               A lone hand with no train to follow also parks here.
+#   3 o'clock — no usable data and the Pi is not on Wi-Fi.
+#   4 o'clock — no usable data for any other reason (MTA down, bad response...).
+NO_SERVICE_ANGLE = 60.0
+NO_WIFI_ANGLE = 90.0
+FEED_ERROR_ANGLE = 120.0
+
+# Network interface checked to tell "no Wi-Fi" from other feed failures.
+WIFI_INTERFACE = "wlan0"
+
+# Keep counting down cached trains through a feed outage this short (seconds);
+# past it, the hands go to the no-Wi-Fi / feed-error position instead.
+STALE_DATA_SECONDS = 120
 
 # 28BYJ-48 geometry: half-step mode, gear-reduced output shaft.
 # Measured empirically on this hardware: 4096 steps produced only 180° of

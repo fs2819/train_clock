@@ -8,7 +8,7 @@ import logging
 import time
 from dataclasses import dataclass
 
-from config import CACHE_TTL_SECONDS, NUM_HANDS
+from config import CACHE_TTL_SECONDS, NUM_HANDS, STALE_DATA_SECONDS, WIFI_INTERFACE
 from mta_feed import StationTimes, get_next_arrivals
 
 logger = logging.getLogger(__name__)
@@ -67,6 +67,28 @@ def get_upcoming_trains() -> list[UpcomingTrain]:
     ]
     trains.sort(key=lambda t: t.minutes)
     return trains
+
+
+def get_feed_status() -> str:
+    """'ok', 'no_wifi' or 'feed_error' for the data behind the last get_upcoming_trains().
+
+    Data counts as usable until STALE_DATA_SECONDS after the last successful
+    fetch. Past that, the Wi-Fi link decides which failure it is: operstate is
+    'up' only while wlan0 is associated with an access point.
+    """
+    if (
+        _cached_times is not None
+        and (time.time() - _cached_times.fetch_timestamp) <= STALE_DATA_SECONDS
+    ):
+        return "ok"
+
+    try:
+        with open(f"/sys/class/net/{WIFI_INTERFACE}/operstate") as f:
+            wifi_up = f.read().strip() == "up"
+    except FileNotFoundError:
+        wifi_up = False  # no such interface (e.g. running on a laptop)
+
+    return "feed_error" if wifi_up else "no_wifi"
 
 
 def get_minutes_to_next_trains() -> list[float]:

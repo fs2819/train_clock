@@ -9,7 +9,7 @@ import sys
 import time
 
 from config import NUM_HANDS, POLL_INTERVAL_SECONDS, LOG_LEVEL
-from subway_times import get_upcoming_trains
+from subway_times import get_feed_status, get_upcoming_trains
 from clock_controller import update_clock_hands, shutdown as shutdown_clock
 
 logging.basicConfig(
@@ -41,10 +41,11 @@ def main():
             # assigns hands to individual trains and a hand whose train has
             # just arrived picks up one from further down the list.
             upcoming = get_upcoming_trains()
+            status = get_feed_status()
             display = [f"{t.minutes:.1f}" for t in upcoming[:NUM_HANDS]]
-            logger.info("Next %d trains (min): %s", NUM_HANDS, display)
+            logger.info("Feed %s; next %d trains (min): %s", status, NUM_HANDS, display)
 
-            update_clock_hands(upcoming)
+            update_clock_hands(upcoming, status)
 
         except Exception:
             logger.exception("Error in main loop")

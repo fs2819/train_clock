@@ -16,6 +16,18 @@ The software recomputes hand positions every 10 seconds (`POLL_INTERVAL_SECONDS`
 | 30 | 6 o'clock |
 | 55 (capped) | 1 o'clock |
 
+**Status positions.** All three hands parked together at one spot is a status,
+not trains:
+
+| All hands at | Meaning |
+| --- | --- |
+| 2 o'clock | Feed is fine, but no downtown 1 trains are stopping at 125th St |
+| 3 o'clock | No usable data and the Pi is not on Wi-Fi |
+| 4 o'clock | No usable data for any other reason (MTA feed down, bad response) |
+
+A brief outage doesn't trigger these: the clock keeps counting down the last
+fetched trains for `STALE_DATA_SECONDS` (2 min) before giving up on them. (1 o'clock is left for trains 55+ min out.)
+
 As a train approaches, its hand sweeps clockwise up toward 12. Trains beyond `CLOCK_MAX_MINUTES` (55) are pegged at the 1 o'clock cap so a far-out train never wraps past 12 and collides with the "arriving now" position.
 
 **Each hand follows one train.** Hands are *not* pinned to "soonest / second /

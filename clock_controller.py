@@ -7,7 +7,9 @@ run anywhere.
 
 Mapping: a train `m` minutes away points at angle (m / CLOCK_MAX_MINUTES) * 360,
 measured clockwise from the home position (12 o'clock = 0 minutes). Trains
-beyond CLOCK_MAX_MINUTES are pegged at the max. Hands with no data park at home.
+beyond CLOCK_MAX_MINUTES are pegged at the max. When the feed status is not
+'ok', all hands park together at a status position instead (see config.py):
+2 o'clock no service, 3 o'clock no Wi-Fi, 4 o'clock any other data failure.
 
 Hand assignment: each hand follows ONE specific train (tracked by GTFS trip ID)
 for that train's whole approach, rather than being pinned to "soonest" /
@@ -37,12 +39,14 @@ import logging
 
 from config import (
     CLOCK_MAX_MINUTES,
+    FEED_ERROR_ANGLE,
     HANDS,
     HALL_ACTIVE_LEVEL,
     HOMING_MAX_STEPS,
     MINUTES_PER_REV,
     MOTORS_ENABLED,
     NO_SERVICE_ANGLE,
+    NO_WIFI_ANGLE,
     NUM_HANDS,
     REHOME_AFTER_ARRIVAL,
     STEP_DELAY_SECONDS,
@@ -51,6 +55,9 @@ from config import (
 from subway_times import UpcomingTrain
 
 logger = logging.getLogger(__name__)
+
+# Where all hands park for each non-'ok' feed status.
+_STATUS_ANGLES = {"no_wifi": NO_WIFI_ANGLE, "feed_error": FEED_ERROR_ANGLE}
 
 # Built lazily on first use so importing this module never touches GPIO.
 _hands = None
@@ -169,21 +176,32 @@ def _angle_for_minutes(minutes: float) -> float:
     return -capped / MINUTES_PER_REV * 360.0
 
 
-def update_clock_hands(upcoming: list[UpcomingTrain]) -> None:
+def update_clock_hands(upcoming: list[UpcomingTrain], status: str) -> None:
     """Point each hand at the train it is following.
 
     Args:
         upcoming: every known upcoming arrival, soonest first. Pass more than
             NUM_HANDS of them — a hand whose train has just arrived needs one
             further down the queue to pick up.
+        status: feed status from subway_times.get_feed_status(). Anything but
+            'ok' parks every hand at that status's position.
     """
     if not MOTORS_ENABLED:
-        _log_only(upcoming)
+        _log_only(upcoming, status)
         return
 
     # Home before mutating any assignment state, so a homing failure leaves
     # the previous assignment intact for the next attempt.
     hands = _get_hands()
+
+    # No usable data: all hands to the status position. Train assignments are
+    # left alone, so when data returns each hand goes back to its own train.
+    if status != "ok":
+        angle = _STATUS_ANGLES[status]
+        logger.info("feed %s — parking all hands at %.0f°", status, angle)
+        for hand in hands:
+            hand.move_to_angle(angle)
+        return
 
     previous = list(_hand_trip_ids)
     assigned = _assign_trains(upcoming)
@@ -231,7 +249,12 @@ def update_clock_hands(upcoming: list[UpcomingTrain]) -> None:
         hand.move_to_angle(angle, forward_only=switched)
 
 
-def _log_only(upcoming: list[UpcomingTrain]) -> None:
+def _log_only(upcoming: list[UpcomingTrain], status: str) -> None:
+    if status != "ok":
+        angle = _STATUS_ANGLES[status]
+        logger.info("Feed %s — all hands would park at %.0f°", status, angle)
+        return
+
     previous = list(_hand_trip_ids)
     assigned = _assign_trains(upcoming)
 
